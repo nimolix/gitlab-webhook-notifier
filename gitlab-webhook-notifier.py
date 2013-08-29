@@ -57,7 +57,7 @@ mail_from = 'gitlab@gitlab.local'
 # bind the notifier to this port
 bind_port = 8000
 
-# when to rotate log file
+# when rotate log file
 log_max_size = 5 * pow(2, 20)         # 5MB
 
 # verbosity level
