@@ -28,6 +28,8 @@ import logging
 import logging.handlers
 import requests
 import smtplib
+from email.mime.text import MIMEText
+import cgi
 from string import Template
 
 
@@ -41,6 +43,9 @@ gitlab_url = 'http://gitlab.local'
 
 # api access token, get it from your profile page in gitlab
 gitlab_token = ''
+
+# exclude member of the project, which should not recieve the notify
+ex_member_mails = ["deploy@xxx.com"]
 
 # smtp host, defaults to 'localhost'
 smtp_host = 'localhost'
@@ -125,40 +130,33 @@ class Receiver(BaseHTTPRequestHandler):
         mail_subject = 'GitLab | %s | notify' % project_name
         commit_log = ''
         for commit in commits:
-            commit_log += ' - by %s <%s>\n' % (commit['author']['name'], commit['author']['email'])
-            commit_log += '   %s\n\n' % commit['message']
+            commit_log += ' - by %s [%s] <a href="%s">commit-%s</a><br/>' % (commit['author']['name'], commit['author']['email'], commit['url'], commit['id'])
+            commit_log += '   %s<br/><br/>' % cgi.escape(commit['message']).replace('\n', '<br/>')
 
         mail_template = Template('''
-$user_name pushed new commits to $project_name.
-
-* Project page
-- $project_url
-
-* Commit info
-$commit_log
-----
+$user_name pushed new commits to $project_name.<br/>
+<br/>
+* Project page<br/>
+- <a href="$project_url" >$project_url</a><br/>
+<br/>
+* Commit info<br/>
+$commit_log<br/>
+----<br/>
 This email is delivered by GitLab Web Hook.
         ''')
         mail_body = mail_template.substitute(locals())
-        member_emails = [m['email'] for m in members]
-
-        payload = '\r\n'.join(
-            (
-                'From: %s' % mail_from,
-                'To: %s' % ','.join(member_emails),
-                'Subject: %s' % mail_subject,
-                '',
-                mail_body
-            )
-        )
-        log.debug('preparing to send email.')
+        member_emails = filter(lambda x: not(x in ex_member_mails), [m['email'] for m in members])
+        
+        msg = MIMEText(mail_body,'html','utf-8')
+        msg['Subject'] = mail_subject
+        
         # trying to send email
         server = smtplib.SMTP(smtp_host)
         if smtp_user and smtp_pass:
             log.debug('login to the smtp server.')
             server.login(smtp_user, smtp_pass)
 
-        server.sendmail(mail_from, member_emails, payload)
+        server.sendmail(mail_from, member_emails, msg.as_string())
         log.debug('message sent successfully!')
         server.quit()
 
